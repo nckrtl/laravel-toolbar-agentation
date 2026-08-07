@@ -1,0 +1,14 @@
+{
+    "name": "laravel-toolbar-agentation",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "bun build resources/js/agentation.ts --outfile build/agentation.js --format iife --minify --target browser --define process.env.NODE_ENV='\"production\"'"
+    },
+    "devDependencies": {
+        "agentation": "^3.0.2",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
+    }
+}
