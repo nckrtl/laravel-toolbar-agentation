@@ -61,20 +61,21 @@ php artisan vendor:publish --tag=laravel-toolbar-agentation-config
 ```php
 return [
     'enabled' => env('LARAVEL_TOOLBAR_AGENTATION_ENABLED', true),
-    'endpoint' => env('LARAVEL_TOOLBAR_AGENTATION_ENDPOINT', 'http://localhost:4747'),
+    'endpoint' => env('AGENTATION_URL'),
 ];
 ```
 
-Set `endpoint` to `null` to keep annotations in `localStorage` only, without an
-MCP server.
+Leave `AGENTATION_URL` unset (or set `endpoint` to `null`) to keep annotations
+in `localStorage` only, without an MCP sync server. When Orbit runs a per-app
+agentation-mcp Process it projects `AGENTATION_URL` into the app environment.
 
 ### Content Security Policy
 
-If your app sends a CSP, allow the sync server as a connect source in
-development:
+If your app sends a CSP, allow the sync server as a connect source (use the
+same host as `AGENTATION_URL`):
 
 ```php
-$policy->add(Directive::CONNECT, 'http://localhost:4747');
+$policy->add(Directive::CONNECT, env('AGENTATION_URL'));
 ```
 
 ## Development

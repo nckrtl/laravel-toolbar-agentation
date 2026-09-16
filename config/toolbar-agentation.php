@@ -11,9 +11,12 @@ return [
     'enabled' => env('LARAVEL_TOOLBAR_AGENTATION_ENABLED', true),
 
     /*
-     * The agentation-mcp sync server. Annotations are pushed here so the agent
-     * can read them over MCP. Set to null to keep annotations in localStorage
-     * only.
+     * The agentation-mcp HTTP sync server URL. Annotations are pushed here so
+     * the agent can read them over MCP. Leave unset (null) to keep annotations
+     * in localStorage only — no hard-coded localhost fallback.
+     *
+     * Orbit projects this as AGENTATION_URL when a per-app agentation Process
+     * is running; without it the toolbar stays local-only.
      */
-    'endpoint' => env('LARAVEL_TOOLBAR_AGENTATION_ENDPOINT', 'http://localhost:4747'),
+    'endpoint' => env('AGENTATION_URL'),
 ];
