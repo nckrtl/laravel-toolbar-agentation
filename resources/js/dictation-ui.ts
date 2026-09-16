@@ -753,7 +753,7 @@ function micIcon(): string {
 }
 
 function stopIcon(): string {
-    return `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>`;
+    return `<span class="toolbar-agentation-dictation-stop" aria-hidden="true"></span>`;
 }
 
 function spinnerIcon(): string {
@@ -786,7 +786,7 @@ function injectStyles(): void {
             margin-right: 0;
             padding: 0;
             border: none;
-            border-radius: 4px;
+            border-radius: 50%;
             background: transparent;
             color: rgba(255, 255, 255, 0.55);
             cursor: pointer;
@@ -802,7 +802,18 @@ function injectStyles(): void {
             background: rgba(244, 63, 94, 0.30);
             width: 32px;
             height: 32px;
+            border-radius: 50%;
+        }
+        .toolbar-agentation-dictation-stop {
+            display: block;
+            width: 12px;
+            height: 12px;
             border-radius: 4px;
+            background: currentColor;
+        }
+        .toolbar-agentation-dictation.is-recording .toolbar-agentation-dictation-stop {
+            width: 14px;
+            height: 14px;
         }
         .toolbar-agentation-dictation.is-busy {
             color: rgba(255, 255, 255, 0.7);
