@@ -4805,7 +4805,7 @@ input[type=checkbox]:checked + .styles-module__customCheckbox___U39ax {
             height: 100%;
             transform: scaleX(0);
             transform-origin: left center;
-            background: color-mix(in srgb, var(--agentation-color-blue, #3b82f6) 42%, transparent);
+            background: rgba(255, 255, 255, 0.05);
             animation: toolbar-agentation-dictation-wipe var(--toolbar-dictation-autosubmit-ms, 5000ms) linear forwards;
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation {
@@ -4823,7 +4823,7 @@ input[type=checkbox]:checked + .styles-module__customCheckbox___U39ax {
             color: #e11d48;
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation-autosubmit::before {
-            background: color-mix(in srgb, var(--agentation-color-blue, #2563eb) 32%, transparent);
+            background: rgba(255, 255, 255, 0.05);
         }
         @keyframes toolbar-agentation-dictation-pulse {
             0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #f43f5e 45%, transparent); }
