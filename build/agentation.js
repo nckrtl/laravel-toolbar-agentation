@@ -4805,7 +4805,7 @@ input[type=checkbox]:checked + .styles-module__customCheckbox___U39ax {
             height: 100%;
             transform: scaleX(0);
             transform-origin: left center;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.20);
             animation: toolbar-agentation-dictation-wipe var(--toolbar-dictation-autosubmit-ms, 5000ms) linear forwards;
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation {
@@ -4823,7 +4823,7 @@ input[type=checkbox]:checked + .styles-module__customCheckbox___U39ax {
             color: #e11d48;
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation-autosubmit::before {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.20);
         }
         @keyframes toolbar-agentation-dictation-pulse {
             0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #f43f5e 45%, transparent); }
