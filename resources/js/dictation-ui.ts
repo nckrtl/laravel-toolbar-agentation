@@ -152,15 +152,24 @@ function installGlobalKeyHandler(settings: DictationSettings): void {
             }
 
             if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
-                if (!hasLiveRecording()) {
-                    return;
-                }
-
                 if (isUnrelatedEditable(event.target)) {
                     return;
                 }
 
-                if (stopActiveRecording()) {
+                // First Enter while recording: stop + transcribe (existing).
+                if (hasLiveRecording()) {
+                    if (stopActiveRecording()) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+
+                    return;
+                }
+
+                // Second Enter while auto-submit wipe is active: submit now.
+                // Ignore during transcribing (no autoSubmit yet) and when the
+                // user cancelled the countdown to edit (autoSubmit cleared).
+                if (autoSubmitTextareas.size > 0 && flushActiveAutoSubmits()) {
                     event.preventDefault();
                     event.stopPropagation();
                 }
@@ -505,6 +514,47 @@ function blurForAutoSubmit(textarea: HTMLTextAreaElement): void {
     });
 }
 
+function flushActiveAutoSubmits(): boolean {
+    let flushed = false;
+
+    for (const textarea of [...autoSubmitTextareas]) {
+        if (flushAutoSubmit(textarea)) {
+            flushed = true;
+        }
+    }
+
+    return flushed;
+}
+
+/**
+ * Cancel the wipe countdown and click Add/Submit immediately (same as timer
+ * expiry). Skips empty textareas so a second Enter during/after a failed
+ * transcription cannot submit a blank annotation.
+ */
+function flushAutoSubmit(textarea: HTMLTextAreaElement): boolean {
+    const state = autoSubmits.get(textarea);
+
+    if (!state) {
+        return false;
+    }
+
+    const submit = findSubmit(textarea) ?? state.submit;
+
+    cancelAutoSubmit(textarea);
+
+    if (!submit || !document.body.contains(submit) || submit.disabled) {
+        return false;
+    }
+
+    if (textarea.value.trim() === "") {
+        return false;
+    }
+
+    submit.click();
+
+    return true;
+}
+
 function startAutoSubmit(
     textarea: HTMLTextAreaElement,
     settings: DictationSettings,
@@ -535,6 +585,18 @@ function startAutoSubmit(
     const onKeyDown = (event: KeyboardEvent): void => {
         if (event.key === "Escape") {
             cancelAutoSubmit(textarea);
+            return;
+        }
+
+        if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+            if (isUnrelatedEditable(event.target)) {
+                return;
+            }
+
+            if (flushAutoSubmit(textarea)) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
         }
     };
 
@@ -544,13 +606,7 @@ function startAutoSubmit(
     };
 
     const timer = window.setTimeout(() => {
-        const current = findSubmit(textarea) ?? submit;
-
-        cancelAutoSubmit(textarea);
-
-        if (document.body.contains(current) && !current.disabled) {
-            current.click();
-        }
+        flushAutoSubmit(textarea);
     }, autoSubmitMs);
 
     textarea.addEventListener("focusin", onFocus);
