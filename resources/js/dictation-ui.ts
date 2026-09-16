@@ -7,7 +7,7 @@ const COMMENT_TEXTAREA = 'textarea[class*="styles-module__textarea___"]';
 const ACTIONS_ROW = '[class*="styles-module__actions___"]';
 const SUBMIT_BUTTON = '[class*="styles-module__submit___"]';
 const POPUP = '[class*="styles-module__popup___"], [data-annotation-popup]';
-const OUR_UI_SELECTOR = `[${BUTTON_ATTR}], .toolbar-agentation-dictation, .toolbar-agentation-dictation-error, .toolbar-agentation-dictation-autosubmit`;
+const OUR_UI_SELECTOR = `[${BUTTON_ATTR}], .toolbar-agentation-dictation, .toolbar-agentation-dictation-error, .toolbar-agentation-dictation-autosubmit, .toolbar-agentation-dictation-group`;
 const DEFAULT_AUTO_SUBMIT_MS = 5000;
 
 type Session = {
@@ -23,6 +23,7 @@ type AutoSubmit = {
     overlay: HTMLElement | null;
     submit: HTMLButtonElement | null;
     onFocus: (event: FocusEvent) => void;
+    onPointer: (event: Event) => void;
     onKeyDown: (event: KeyboardEvent) => void;
     onClick: () => void;
 };
@@ -282,11 +283,62 @@ function findSubmit(textarea: HTMLTextAreaElement): HTMLButtonElement | null {
 }
 
 function findError(textarea: HTMLTextAreaElement): HTMLElement | null {
+    const actions = findActions(textarea);
+    const inline = actions?.querySelector<HTMLElement>(".toolbar-agentation-dictation-error");
+
+    if (inline) {
+        return inline;
+    }
+
+    // Legacy placement (above field / after textarea) — migrate on attach.
     const next = textarea.nextElementSibling;
 
     return next instanceof HTMLElement && next.classList.contains("toolbar-agentation-dictation-error")
         ? next
         : null;
+}
+
+function ensureErrorBesideMic(textarea: HTMLTextAreaElement, button: HTMLButtonElement, actions: HTMLElement): HTMLElement {
+    const legacy = textarea.nextElementSibling instanceof HTMLElement
+        && textarea.nextElementSibling.classList.contains("toolbar-agentation-dictation-error")
+        ? textarea.nextElementSibling
+        : null;
+
+    let group = button.closest(".toolbar-agentation-dictation-group") as HTMLElement | null;
+
+    if (!group) {
+        group = document.createElement("span");
+        group.className = "toolbar-agentation-dictation-group";
+
+        if (button.hasAttribute("data-toolbar-dictation-lead") || !actions.querySelector('[class*="styles-module__deleteWrapper___"]')) {
+            group.setAttribute("data-toolbar-dictation-lead", "1");
+            button.removeAttribute("data-toolbar-dictation-lead");
+        }
+
+        button.replaceWith(group);
+        group.appendChild(button);
+    } else if (button.hasAttribute("data-toolbar-dictation-lead")) {
+        group.setAttribute("data-toolbar-dictation-lead", "1");
+        button.removeAttribute("data-toolbar-dictation-lead");
+    }
+
+    let error = group.querySelector<HTMLElement>(".toolbar-agentation-dictation-error");
+
+    if (!error && legacy && legacy.parentElement !== group) {
+        error = legacy;
+        group.appendChild(error);
+    } else if (legacy && legacy !== error) {
+        legacy.remove();
+    }
+
+    if (!error) {
+        error = document.createElement("span");
+        error.className = "toolbar-agentation-dictation-error";
+        error.hidden = true;
+        group.appendChild(error);
+    }
+
+    return error;
 }
 
 function attachToTextarea(textarea: HTMLTextAreaElement, settings: DictationSettings): void {
@@ -305,10 +357,6 @@ function attachToTextarea(textarea: HTMLTextAreaElement, settings: DictationSett
         button.className = "toolbar-agentation-dictation";
         button.innerHTML = micIcon();
 
-        if (!actions.querySelector('[class*="styles-module__deleteWrapper___"]')) {
-            button.setAttribute("data-toolbar-dictation-lead", "1");
-        }
-
         button.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -320,12 +368,7 @@ function attachToTextarea(textarea: HTMLTextAreaElement, settings: DictationSett
         actions.insertBefore(button, actions.firstChild);
     }
 
-    if (!findError(textarea)) {
-        const error = document.createElement("p");
-        error.className = "toolbar-agentation-dictation-error";
-        error.hidden = true;
-        textarea.insertAdjacentElement("afterend", error);
-    }
+    ensureErrorBesideMic(textarea, button, actions);
 
     const session = sessions.get(textarea);
     const desired = session?.state ?? "idle";
@@ -403,7 +446,7 @@ async function startDictation(
         });
 
         if (text.trim() === "") {
-            showError(error, "No speech detected.");
+            showError(error, "No audio");
             setButtonState(session.button, "idle");
         } else {
             fillComment(textarea, mergeTranscript(textarea.value, text));
@@ -412,8 +455,10 @@ async function startDictation(
             const autoSubmitMs = resolveAutoSubmitMs(settings);
 
             if (autoSubmitMs > 0) {
-                // Skip textarea.focus() — focusing would cancel the countdown.
+                // Do not focus after stop→fill: a focused field breaks click-to-
+                // interrupt (focus does not re-fire). Blur if already focused.
                 startAutoSubmit(textarea, settings, autoSubmitMs);
+                blurForAutoSubmit(textarea);
             } else {
                 textarea.focus();
             }
@@ -446,6 +491,20 @@ function resolveAutoSubmitMs(settings: DictationSettings): number {
     return DEFAULT_AUTO_SUBMIT_MS;
 }
 
+function blurForAutoSubmit(textarea: HTMLTextAreaElement): void {
+    if (document.activeElement === textarea) {
+        textarea.blur();
+    }
+
+    // fillComment / Agentation may re-focus on the next frame; blur again while
+    // the countdown is still live so click-to-cancel can work via pointer too.
+    requestAnimationFrame(() => {
+        if (autoSubmits.has(textarea) && document.activeElement === textarea) {
+            textarea.blur();
+        }
+    });
+}
+
 function startAutoSubmit(
     textarea: HTMLTextAreaElement,
     settings: DictationSettings,
@@ -456,6 +515,7 @@ function startAutoSubmit(
     const submit = findSubmit(textarea);
 
     if (!submit || submit.disabled) {
+        // Cannot auto-submit — allow editing (existing behavior when ms is effectively unused).
         textarea.focus();
 
         return;
@@ -464,6 +524,11 @@ function startAutoSubmit(
     const overlay = mountAutoSubmitOverlay(submit, autoSubmitMs);
 
     const onFocus = (): void => {
+        cancelAutoSubmit(textarea);
+    };
+
+    const onPointer = (): void => {
+        // Cancel even if the field was already focused (focus would not re-fire).
         cancelAutoSubmit(textarea);
     };
 
@@ -490,10 +555,22 @@ function startAutoSubmit(
 
     textarea.addEventListener("focusin", onFocus);
     textarea.addEventListener("focus", onFocus);
+    textarea.addEventListener("pointerdown", onPointer, true);
+    textarea.addEventListener("mousedown", onPointer, true);
+    textarea.addEventListener("click", onPointer, true);
     submit.addEventListener("click", onClick, { once: true });
     document.addEventListener("keydown", onKeyDown, true);
 
-    autoSubmits.set(textarea, { timer, endsAt: Date.now() + autoSubmitMs, overlay, submit, onFocus, onKeyDown, onClick });
+    autoSubmits.set(textarea, {
+        timer,
+        endsAt: Date.now() + autoSubmitMs,
+        overlay,
+        submit,
+        onFocus,
+        onPointer,
+        onKeyDown,
+        onClick,
+    });
     autoSubmitTextareas.add(textarea);
 }
 
@@ -578,6 +655,9 @@ function cancelAutoSubmit(
     window.clearTimeout(state.timer);
     textarea.removeEventListener("focusin", state.onFocus);
     textarea.removeEventListener("focus", state.onFocus);
+    textarea.removeEventListener("pointerdown", state.onPointer, true);
+    textarea.removeEventListener("mousedown", state.onPointer, true);
+    textarea.removeEventListener("click", state.onPointer, true);
     document.removeEventListener("keydown", state.onKeyDown, true);
 
     if (!options?.skipClickCleanup && state.submit) {
@@ -688,6 +768,15 @@ function injectStyles(): void {
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
+        .toolbar-agentation-dictation-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            min-width: 0;
+        }
+        .toolbar-agentation-dictation-group[data-toolbar-dictation-lead="1"] {
+            margin-right: auto;
+        }
         .toolbar-agentation-dictation {
             display: inline-flex;
             align-items: center;
@@ -697,14 +786,12 @@ function injectStyles(): void {
             margin-right: 0;
             padding: 0;
             border: none;
-            border-radius: 50%;
+            border-radius: 4px;
             background: transparent;
             color: rgba(255, 255, 255, 0.55);
             cursor: pointer;
-            transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
-        }
-        .toolbar-agentation-dictation[data-toolbar-dictation-lead="1"] {
-            margin-right: auto;
+            transition: background-color 0.15s ease, color 0.15s ease, width 0.1s ease, height 0.1s ease;
+            flex: 0 0 auto;
         }
         .toolbar-agentation-dictation:hover {
             background: rgba(255, 255, 255, 0.1);
@@ -712,18 +799,25 @@ function injectStyles(): void {
         }
         .toolbar-agentation-dictation.is-recording {
             color: #f43f5e;
-            background: color-mix(in srgb, #f43f5e 18%, transparent);
-            animation: toolbar-agentation-dictation-pulse 1.2s ease-in-out infinite;
+            background: rgba(244, 63, 94, 0.30);
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
         }
         .toolbar-agentation-dictation.is-busy {
             color: rgba(255, 255, 255, 0.7);
             cursor: progress;
         }
         .toolbar-agentation-dictation-error {
-            margin: 0.35rem 0 0;
+            margin: 0;
+            padding: 0;
             font-size: 0.6875rem;
-            line-height: 1.35;
+            line-height: 1.2;
             color: #fb7185;
+            white-space: nowrap;
+            max-width: 9rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .toolbar-agentation-dictation-spinner {
             animation: toolbar-agentation-dictation-spin 0.7s linear infinite;
@@ -755,17 +849,13 @@ function injectStyles(): void {
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation.is-recording {
             color: #e11d48;
-            background: color-mix(in srgb, #e11d48 14%, transparent);
+            background: rgba(225, 29, 72, 0.30);
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation-error {
             color: #e11d48;
         }
         [class*="styles-module__light___"] .toolbar-agentation-dictation-autosubmit::before {
             background: rgba(255, 255, 255, 0.20);
-        }
-        @keyframes toolbar-agentation-dictation-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #f43f5e 45%, transparent); }
-            50% { box-shadow: 0 0 0 5px transparent; }
         }
         @keyframes toolbar-agentation-dictation-spin {
             to { transform: rotate(360deg); }
