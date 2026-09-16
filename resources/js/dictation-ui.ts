@@ -5,6 +5,7 @@ const BUTTON_ATTR = "data-toolbar-dictation";
 const STYLE_ID = "toolbar-agentation-dictation-styles";
 const COMMENT_TEXTAREA = 'textarea[class*="styles-module__textarea___"]';
 const ACTIONS_ROW = '[class*="styles-module__actions___"]';
+const OUR_UI_SELECTOR = `[${BUTTON_ATTR}], .toolbar-agentation-dictation, .toolbar-agentation-dictation-error`;
 
 type Session = {
     stop: AbortController;
@@ -20,6 +21,11 @@ const liveTextareas = new Set<HTMLTextAreaElement>();
  * Watches Agentation's comment popup (the CSS-module textarea + actions row)
  * and mounts a click-to-toggle mic. Does not replace element picking — it
  * only fills the existing comment field.
+ *
+ * Attach is mutation-driven but must never write DOM from inside an observer
+ * callback in a way that re-triggers unbounded work: we ignore our own nodes,
+ * debounce, and skip setButtonState when the button is already in the desired
+ * state (innerHTML rewrites used to feedback-loop the observer and hang the tab).
  */
 export function mountDictationUi(settings?: DictationSettings | null): void {
     if (!dictationEnabled(settings) || !settings?.wsUrl) {
@@ -28,6 +34,9 @@ export function mountDictationUi(settings?: DictationSettings | null): void {
 
     injectStyles();
 
+    let applying = false;
+    let debounceTimer = 0;
+
     const attachAll = (): void => {
         const root = document.getElementById(ROOT_ID);
 
@@ -35,23 +44,81 @@ export function mountDictationUi(settings?: DictationSettings | null): void {
             return;
         }
 
-        document.querySelectorAll<HTMLTextAreaElement>(COMMENT_TEXTAREA).forEach((textarea) => {
-            if (isCommentPopup(textarea)) {
-                attachToTextarea(textarea, settings);
-            }
-        });
+        applying = true;
 
-        for (const textarea of liveTextareas) {
-            if (!document.body.contains(textarea)) {
-                sessions.get(textarea)?.abort.abort();
-                liveTextareas.delete(textarea);
+        try {
+            // Query document: Agentation may portal the comment popup outside the React root.
+            document.querySelectorAll<HTMLTextAreaElement>(COMMENT_TEXTAREA).forEach((textarea) => {
+                if (isCommentPopup(textarea)) {
+                    attachToTextarea(textarea, settings);
+                }
+            });
+
+            for (const textarea of [...liveTextareas]) {
+                if (!document.body.contains(textarea)) {
+                    sessions.get(textarea)?.abort.abort();
+                    liveTextareas.delete(textarea);
+                }
             }
+        } finally {
+            applying = false;
         }
     };
 
-    const observer = new MutationObserver(attachAll);
+    const scheduleAttach = (): void => {
+        if (applying) {
+            return;
+        }
+
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(attachAll, 50);
+    };
+
+    const observer = new MutationObserver((mutations) => {
+        if (applying) {
+            return;
+        }
+
+        for (const mutation of mutations) {
+            if (mutation.type !== "childList") {
+                continue;
+            }
+
+            for (const node of mutation.addedNodes) {
+                if (!isOurNode(node)) {
+                    scheduleAttach();
+
+                    return;
+                }
+            }
+
+            for (const node of mutation.removedNodes) {
+                if (!isOurNode(node)) {
+                    scheduleAttach();
+
+                    return;
+                }
+            }
+        }
+    });
+
+    // Still watch the document (portals / overlays), but own-node filtering +
+    // debounce + idempotent attach prevent the previous innerHTML feedback hang.
     observer.observe(document.documentElement, { childList: true, subtree: true });
     attachAll();
+}
+
+function isOurNode(node: Node): boolean {
+    if (node instanceof Element) {
+        // Only treat the node as ours if it IS our UI or lives inside it.
+        // Do not use querySelector(descendants): a remounted Agentation popup
+        // that still contains our mic would look "ours" and skip re-attach.
+        return Boolean(node.matches(OUR_UI_SELECTOR) || node.closest(OUR_UI_SELECTOR));
+    }
+
+    const parent = node.parentElement;
+
+    return parent ? isOurNode(parent) : false;
 }
 
 function isCommentPopup(textarea: HTMLTextAreaElement): boolean {
@@ -124,12 +191,16 @@ function attachToTextarea(textarea: HTMLTextAreaElement, settings: DictationSett
     }
 
     const session = sessions.get(textarea);
+    const desired = session?.state ?? "idle";
 
     if (session) {
         session.button = button;
-        setButtonState(button, session.state);
-    } else {
-        setButtonState(button, "idle");
+    }
+
+    // Avoid rewriting innerHTML/attrs when already correct — that used to
+    // re-enter the MutationObserver and hang the tab on element pick.
+    if (button.getAttribute(BUTTON_ATTR) !== desired) {
+        setButtonState(button, desired);
     }
 }
 
