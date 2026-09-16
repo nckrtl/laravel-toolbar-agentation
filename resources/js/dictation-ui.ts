@@ -806,14 +806,14 @@ function injectStyles(): void {
         }
         .toolbar-agentation-dictation-stop {
             display: block;
-            width: 12px;
-            height: 12px;
-            border-radius: 4px;
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
             background: currentColor;
         }
         .toolbar-agentation-dictation.is-recording .toolbar-agentation-dictation-stop {
-            width: 14px;
-            height: 14px;
+            width: 10.5px;
+            height: 10.5px;
         }
         .toolbar-agentation-dictation.is-busy {
             color: rgba(255, 255, 255, 0.7);
