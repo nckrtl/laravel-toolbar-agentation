@@ -41,5 +41,12 @@ return [
          * an explicit mic click.
          */
         'auto_start' => env('TOOLBAR_DICTATION_AUTO_START', true),
+        /*
+         * After a successful stop→fill, wipe left→right across Add/Submit and
+         * auto-click it unless the comment textarea is focused within this
+         * many milliseconds. Set TOOLBAR_DICTATION_AUTO_SUBMIT_MS=0 to disable
+         * (focuses the textarea for manual edit/submit instead).
+         */
+        'auto_submit_ms' => (int) env('TOOLBAR_DICTATION_AUTO_SUBMIT_MS', 5000),
     ],
 ];

@@ -5,7 +5,10 @@ const BUTTON_ATTR = "data-toolbar-dictation";
 const STYLE_ID = "toolbar-agentation-dictation-styles";
 const COMMENT_TEXTAREA = 'textarea[class*="styles-module__textarea___"]';
 const ACTIONS_ROW = '[class*="styles-module__actions___"]';
-const OUR_UI_SELECTOR = `[${BUTTON_ATTR}], .toolbar-agentation-dictation, .toolbar-agentation-dictation-error`;
+const SUBMIT_BUTTON = '[class*="styles-module__submit___"]';
+const POPUP = '[class*="styles-module__popup___"], [data-annotation-popup]';
+const OUR_UI_SELECTOR = `[${BUTTON_ATTR}], .toolbar-agentation-dictation, .toolbar-agentation-dictation-error, .toolbar-agentation-dictation-autosubmit`;
+const DEFAULT_AUTO_SUBMIT_MS = 5000;
 
 type Session = {
     stop: AbortController;
@@ -14,10 +17,22 @@ type Session = {
     state: "recording" | "transcribing";
 };
 
+type AutoSubmit = {
+    timer: number;
+    endsAt: number;
+    overlay: HTMLElement | null;
+    submit: HTMLButtonElement | null;
+    onFocus: (event: FocusEvent) => void;
+    onKeyDown: (event: KeyboardEvent) => void;
+    onClick: () => void;
+};
+
 const sessions = new WeakMap<HTMLTextAreaElement, Session>();
 const liveTextareas = new Set<HTMLTextAreaElement>();
 /** Textareas that already received an auto-start attempt (one shot per instance). */
 const autoStarted = new WeakSet<HTMLTextAreaElement>();
+const autoSubmits = new WeakMap<HTMLTextAreaElement, AutoSubmit>();
+const autoSubmitTextareas = new Set<HTMLTextAreaElement>();
 
 /**
  * Watches Agentation's comment popup (the CSS-module textarea + actions row)
@@ -35,6 +50,7 @@ export function mountDictationUi(settings?: DictationSettings | null): void {
     }
 
     injectStyles();
+    installGlobalKeyHandler(settings);
 
     let applying = false;
     let debounceTimer = 0;
@@ -59,7 +75,17 @@ export function mountDictationUi(settings?: DictationSettings | null): void {
             for (const textarea of [...liveTextareas]) {
                 if (!document.body.contains(textarea)) {
                     sessions.get(textarea)?.abort.abort();
+                    cancelAutoSubmit(textarea);
                     liveTextareas.delete(textarea);
+                }
+            }
+
+            for (const textarea of [...autoSubmitTextareas]) {
+                if (!document.body.contains(textarea)) {
+                    cancelAutoSubmit(textarea);
+                } else {
+                    // React may replace the Submit button; keep the wipe attached.
+                    refreshAutoSubmitOverlay(textarea, settings);
                 }
             }
         } finally {
@@ -110,6 +136,107 @@ export function mountDictationUi(settings?: DictationSettings | null): void {
     attachAll();
 }
 
+function installGlobalKeyHandler(settings: DictationSettings): void {
+    if ((window as Window & { __TOOLBAR_DICTATION_KEYS__?: boolean }).__TOOLBAR_DICTATION_KEYS__) {
+        return;
+    }
+
+    (window as Window & { __TOOLBAR_DICTATION_KEYS__?: boolean }).__TOOLBAR_DICTATION_KEYS__ = true;
+
+    document.addEventListener(
+        "keydown",
+        (event) => {
+            if (event.defaultPrevented || event.isComposing) {
+                return;
+            }
+
+            if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                if (!hasLiveRecording()) {
+                    return;
+                }
+
+                if (isUnrelatedEditable(event.target)) {
+                    return;
+                }
+
+                if (stopActiveRecording()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+
+                return;
+            }
+
+            if (event.key === "Escape" && autoSubmitTextareas.size > 0) {
+                for (const textarea of [...autoSubmitTextareas]) {
+                    cancelAutoSubmit(textarea);
+                }
+                // Do not submit; let Agentation handle Escape if the popup is focused.
+            }
+        },
+        true,
+    );
+
+    // settings reserved for future keybinding toggles
+    void settings;
+}
+
+function hasLiveRecording(): boolean {
+    for (const textarea of liveTextareas) {
+        if (sessions.get(textarea)?.state === "recording") {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function isUnrelatedEditable(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) {
+        return false;
+    }
+
+    if (target.closest(POPUP) || target.closest(`#${ROOT_ID}`) || target.closest(OUR_UI_SELECTOR)) {
+        return false;
+    }
+
+    const editable = target.closest('input, textarea, select, [contenteditable=""], [contenteditable=true]');
+
+    return Boolean(editable);
+}
+
+function stopActiveRecording(): boolean {
+    const active = document.activeElement;
+
+    if (active instanceof HTMLTextAreaElement) {
+        const session = sessions.get(active);
+
+        if (session?.state === "recording") {
+            beginStop(session);
+
+            return true;
+        }
+    }
+
+    for (const textarea of liveTextareas) {
+        const session = sessions.get(textarea);
+
+        if (session?.state === "recording") {
+            beginStop(session);
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function beginStop(session: Session): void {
+    session.state = "transcribing";
+    setButtonState(session.button, "transcribing");
+    session.stop.abort();
+}
+
 function isOurNode(node: Node): boolean {
     if (node instanceof Element) {
         // Only treat the node as ours if it IS our UI or lives inside it.
@@ -126,7 +253,8 @@ function isOurNode(node: Node): boolean {
 function isCommentPopup(textarea: HTMLTextAreaElement): boolean {
     return Boolean(
         textarea.closest(`#${ROOT_ID}`)
-        || textarea.closest('[class*="styles-module__popup___"]'),
+        || textarea.closest('[class*="styles-module__popup___"]')
+        || textarea.closest("[data-annotation-popup]"),
     );
 }
 
@@ -144,6 +272,13 @@ function findActions(textarea: HTMLTextAreaElement): HTMLElement | null {
     }
 
     return null;
+}
+
+function findSubmit(textarea: HTMLTextAreaElement): HTMLButtonElement | null {
+    const actions = findActions(textarea);
+    const button = actions?.querySelector<HTMLButtonElement>(SUBMIT_BUTTON);
+
+    return button instanceof HTMLButtonElement ? button : null;
 }
 
 function findError(textarea: HTMLTextAreaElement): HTMLElement | null {
@@ -236,9 +371,7 @@ function toggleDictation(
     const session = sessions.get(textarea);
 
     if (session) {
-        session.state = "transcribing";
-        setButtonState(session.button, "transcribing");
-        session.stop.abort();
+        beginStop(session);
         return;
     }
 
@@ -255,6 +388,7 @@ async function startDictation(
     const abort = new AbortController();
     const session: Session = { stop, abort, button, state: "recording" };
 
+    cancelAutoSubmit(textarea);
     sessions.set(textarea, session);
     liveTextareas.add(textarea);
     hideError(error);
@@ -270,12 +404,20 @@ async function startDictation(
 
         if (text.trim() === "") {
             showError(error, "No speech detected.");
+            setButtonState(session.button, "idle");
         } else {
             fillComment(textarea, mergeTranscript(textarea.value, text));
-            textarea.focus();
-        }
+            setButtonState(session.button, "idle");
 
-        setButtonState(session.button, "idle");
+            const autoSubmitMs = resolveAutoSubmitMs(settings);
+
+            if (autoSubmitMs > 0) {
+                // Skip textarea.focus() — focusing would cancel the countdown.
+                startAutoSubmit(textarea, settings, autoSubmitMs);
+            } else {
+                textarea.focus();
+            }
+        }
     } catch (cause) {
         if (isAbortError(cause)) {
             setButtonState(session.button, "idle");
@@ -292,6 +434,162 @@ async function startDictation(
         sessions.delete(textarea);
         liveTextareas.delete(textarea);
     }
+}
+
+function resolveAutoSubmitMs(settings: DictationSettings): number {
+    const raw = settings.autoSubmitMs;
+
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+        return Math.max(0, Math.floor(raw));
+    }
+
+    return DEFAULT_AUTO_SUBMIT_MS;
+}
+
+function startAutoSubmit(
+    textarea: HTMLTextAreaElement,
+    settings: DictationSettings,
+    autoSubmitMs: number,
+): void {
+    cancelAutoSubmit(textarea);
+
+    const submit = findSubmit(textarea);
+
+    if (!submit || submit.disabled) {
+        textarea.focus();
+
+        return;
+    }
+
+    const overlay = mountAutoSubmitOverlay(submit, autoSubmitMs);
+
+    const onFocus = (): void => {
+        cancelAutoSubmit(textarea);
+    };
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+        if (event.key === "Escape") {
+            cancelAutoSubmit(textarea);
+        }
+    };
+
+    const onClick = (): void => {
+        // Natural submit — drop the timer/overlay; the click proceeds.
+        cancelAutoSubmit(textarea, { keepOverlay: false, skipClickCleanup: true });
+    };
+
+    const timer = window.setTimeout(() => {
+        const current = findSubmit(textarea) ?? submit;
+
+        cancelAutoSubmit(textarea);
+
+        if (document.body.contains(current) && !current.disabled) {
+            current.click();
+        }
+    }, autoSubmitMs);
+
+    textarea.addEventListener("focusin", onFocus);
+    textarea.addEventListener("focus", onFocus);
+    submit.addEventListener("click", onClick, { once: true });
+    document.addEventListener("keydown", onKeyDown, true);
+
+    autoSubmits.set(textarea, { timer, endsAt: Date.now() + autoSubmitMs, overlay, submit, onFocus, onKeyDown, onClick });
+    autoSubmitTextareas.add(textarea);
+}
+
+function refreshAutoSubmitOverlay(textarea: HTMLTextAreaElement, settings: DictationSettings): void {
+    const state = autoSubmits.get(textarea);
+
+    if (!state) {
+        return;
+    }
+
+    const submit = findSubmit(textarea);
+
+    if (!submit) {
+        return;
+    }
+
+    if (state.submit === submit && state.overlay && submit.contains(state.overlay)) {
+        return;
+    }
+
+    if (state.submit && state.onClick) {
+        state.submit.removeEventListener("click", state.onClick);
+    }
+
+    if (state.overlay) {
+        state.overlay.remove();
+    }
+
+    const remaining = Math.max(0, state.endsAt - Date.now());
+    if (remaining <= 0) {
+        return;
+    }
+    const overlay = mountAutoSubmitOverlay(submit, remaining);
+    const onClick = (): void => {
+        cancelAutoSubmit(textarea, { keepOverlay: false, skipClickCleanup: true });
+    };
+
+    submit.addEventListener("click", onClick, { once: true });
+    state.submit = submit;
+    state.overlay = overlay;
+    state.onClick = onClick;
+}
+
+function mountAutoSubmitOverlay(submit: HTMLButtonElement, durationMs: number): HTMLElement {
+    const existing = submit.querySelector<HTMLElement>(".toolbar-agentation-dictation-autosubmit");
+
+    if (existing) {
+        existing.remove();
+    }
+
+    const computed = window.getComputedStyle(submit);
+
+    if (computed.position === "static") {
+        submit.style.position = "relative";
+    }
+
+    if (computed.overflow === "visible") {
+        submit.style.overflow = "hidden";
+    }
+
+    const overlay = document.createElement("span");
+    overlay.className = "toolbar-agentation-dictation-autosubmit";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.setProperty("--toolbar-dictation-autosubmit-ms", `${durationMs}ms`);
+    submit.appendChild(overlay);
+
+    return overlay;
+}
+
+function cancelAutoSubmit(
+    textarea: HTMLTextAreaElement,
+    options?: { keepOverlay?: boolean; skipClickCleanup?: boolean },
+): void {
+    const state = autoSubmits.get(textarea);
+
+    if (!state) {
+        autoSubmitTextareas.delete(textarea);
+
+        return;
+    }
+
+    window.clearTimeout(state.timer);
+    textarea.removeEventListener("focusin", state.onFocus);
+    textarea.removeEventListener("focus", state.onFocus);
+    document.removeEventListener("keydown", state.onKeyDown, true);
+
+    if (!options?.skipClickCleanup && state.submit) {
+        state.submit.removeEventListener("click", state.onClick);
+    }
+
+    if (!options?.keepOverlay && state.overlay) {
+        state.overlay.remove();
+    }
+
+    autoSubmits.delete(textarea);
+    autoSubmitTextareas.delete(textarea);
 }
 
 function mergeTranscript(existing: string, incoming: string): string {
@@ -430,6 +728,24 @@ function injectStyles(): void {
         .toolbar-agentation-dictation-spinner {
             animation: toolbar-agentation-dictation-spin 0.7s linear infinite;
         }
+        .toolbar-agentation-dictation-autosubmit {
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1;
+        }
+        .toolbar-agentation-dictation-autosubmit::before {
+            content: "";
+            display: block;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(0);
+            transform-origin: left center;
+            background: color-mix(in srgb, var(--agentation-color-blue, #3b82f6) 42%, transparent);
+            animation: toolbar-agentation-dictation-wipe var(--toolbar-dictation-autosubmit-ms, 5000ms) linear forwards;
+        }
         [class*="styles-module__light___"] .toolbar-agentation-dictation {
             color: rgba(0, 0, 0, 0.45);
         }
@@ -444,12 +760,19 @@ function injectStyles(): void {
         [class*="styles-module__light___"] .toolbar-agentation-dictation-error {
             color: #e11d48;
         }
+        [class*="styles-module__light___"] .toolbar-agentation-dictation-autosubmit::before {
+            background: color-mix(in srgb, var(--agentation-color-blue, #2563eb) 32%, transparent);
+        }
         @keyframes toolbar-agentation-dictation-pulse {
             0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #f43f5e 45%, transparent); }
             50% { box-shadow: 0 0 0 5px transparent; }
         }
         @keyframes toolbar-agentation-dictation-spin {
             to { transform: rotate(360deg); }
+        }
+        @keyframes toolbar-agentation-dictation-wipe {
+            from { transform: scaleX(0); }
+            to { transform: scaleX(1); }
         }
     `;
     document.head.appendChild(style);

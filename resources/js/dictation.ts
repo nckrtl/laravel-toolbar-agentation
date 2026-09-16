@@ -24,6 +24,12 @@ export type DictationSettings = {
     codec?: DictationCodec | string;
     /** Start recording when a new comment popup textarea first appears. */
     autoStart?: boolean;
+    /**
+     * After a successful stop→fill, show a progress wipe on Add/Submit and
+     * auto-click it unless the textarea is focused within this many ms.
+     * 0 disables the overlay / auto-submit (focuses the textarea instead).
+     */
+    autoSubmitMs?: number;
 };
 
 export type DictateOptions = {

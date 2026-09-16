@@ -109,9 +109,10 @@ it('exposes diction settings to the runtime', function (): void {
     config()->set('toolbar-agentation.dictation.ws_url', 'wss://diction.orbit/v1/audio/stream');
     config()->set('toolbar-agentation.dictation.codec', 'auto');
     config()->set('toolbar-agentation.dictation.auto_start', true);
+    config()->set('toolbar-agentation.dictation.auto_submit_ms', 5000);
 
     expect(injectInto('<html><body></body></html>'))
-        ->toContain('"dictation":{"provider":"diction","wsUrl":"wss://diction.orbit/v1/audio/stream","codec":"auto","autoStart":true}');
+        ->toContain('"dictation":{"provider":"diction","wsUrl":"wss://diction.orbit/v1/audio/stream","codec":"auto","autoStart":true,"autoSubmitMs":5000}');
 });
 
 it('can disable dictation auto-start', function (): void {
@@ -119,6 +120,13 @@ it('can disable dictation auto-start', function (): void {
     config()->set('toolbar-agentation.dictation.auto_start', false);
 
     expect(injectInto('<html><body></body></html>'))->toContain('"autoStart":false');
+});
+
+it('can disable dictation auto-submit', function (): void {
+    config()->set('toolbar-agentation.dictation.provider', 'diction');
+    config()->set('toolbar-agentation.dictation.auto_submit_ms', 0);
+
+    expect(injectInto('<html><body></body></html>'))->toContain('"autoSubmitMs":0');
 });
 
 it('hides dictation when the provider is none', function (): void {

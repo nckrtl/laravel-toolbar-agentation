@@ -82,7 +82,7 @@ class AgentationInjector
     }
 
     /**
-     * @return array{provider: string, wsUrl?: string, codec?: string, autoStart?: bool}
+     * @return array{provider: string, wsUrl?: string, codec?: string, autoStart?: bool, autoSubmitMs?: int}
      */
     protected function dictation(): array
     {
@@ -114,11 +114,15 @@ class AgentationInjector
             FILTER_VALIDATE_BOOLEAN,
         );
 
+        $autoSubmitMs = config('toolbar-agentation.dictation.auto_submit_ms', 5000);
+        $autoSubmitMs = is_numeric($autoSubmitMs) ? max(0, (int) $autoSubmitMs) : 5000;
+
         return [
             'provider' => 'diction',
             'wsUrl' => $wsUrl,
             'codec' => $codec,
             'autoStart' => $autoStart,
+            'autoSubmitMs' => $autoSubmitMs,
         ];
     }
 

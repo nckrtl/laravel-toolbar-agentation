@@ -67,6 +67,7 @@ return [
         'ws_url' => env('TOOLBAR_DICTATION_WS_URL', 'wss://diction.orbit/v1/audio/stream'),
         'codec' => env('TOOLBAR_DICTATION_CODEC', 'auto'), // auto|opus|pcm
         'auto_start' => env('TOOLBAR_DICTATION_AUTO_START', true),
+        'auto_submit_ms' => (int) env('TOOLBAR_DICTATION_AUTO_SUBMIT_MS', 5000),
     ],
 ];
 ```
@@ -84,6 +85,15 @@ mic). Click the mic again to stop; the transcript is written into the existing
 comment field so you can edit and submit as usual. Set
 `TOOLBAR_DICTATION_AUTO_START=false` to require an explicit mic click, or
 `TOOLBAR_DICTATION_PROVIDER=none` to hide the mic.
+
+While recording, **Enter** stops dictation (same path as the mic) even when
+focus is outside the comment field — but not when an unrelated page input is
+focused. After a successful transcript fill, Add/Submit shows a left→right
+progress wipe for `TOOLBAR_DICTATION_AUTO_SUBMIT_MS` (default `5000`). If the
+textarea is not focused in that window, Add is clicked automatically. Focusing
+the textarea, pressing Escape, or clicking Add yourself cancels the countdown.
+Set `TOOLBAR_DICTATION_AUTO_SUBMIT_MS=0` to disable auto-submit (focuses the
+field for manual edit instead).
 
 Audio goes **directly** to Diction over WebSocket (`wss://diction.orbit/v1/audio/stream`
 by default). Laravel does not proxy the stream. Diction must be reachable from
