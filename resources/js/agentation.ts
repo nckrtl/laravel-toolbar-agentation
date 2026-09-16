@@ -1,9 +1,12 @@
 import { Agentation, loadAnnotations } from "agentation";
 import { createRoot, type Root } from "react-dom/client";
 import { jsx } from "react/jsx-runtime";
+import { mountDictationUi } from "./dictation-ui";
+import type { DictationSettings } from "./dictation";
 
 type Settings = {
     endpoint?: string | null;
+    dictation?: DictationSettings;
 };
 
 declare global {
@@ -94,6 +97,7 @@ function mount(): void {
 
     render();
     publishCount(count);
+    mountDictationUi(window.__TOOLBAR_AGENTATION__?.dictation);
 
     window.addEventListener("popstate", resync);
     document.addEventListener("inertia:navigate", resync);

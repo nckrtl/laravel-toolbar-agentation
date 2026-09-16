@@ -19,4 +19,20 @@ return [
      * is running; without it the toolbar stays local-only.
      */
     'endpoint' => env('AGENTATION_URL'),
+
+    /*
+     * Click-to-dictate on the Agentation comment popup. The browser talks to
+     * Diction directly over WebSocket — Laravel never proxies the audio.
+     *
+     * Set provider to "none" to hide the mic control.
+     *
+     * Codec: "auto" prefers MediaRecorder Opus (`?codec=opus`, WebM/Ogg) and
+     * falls back to PCM16 LE mono 16 kHz, which is Diction's documented
+     * /v1/audio/stream default. Force "opus" or "pcm" to skip detection.
+     */
+    'dictation' => [
+        'provider' => env('TOOLBAR_DICTATION_PROVIDER', 'diction'),
+        'ws_url' => env('TOOLBAR_DICTATION_WS_URL', 'wss://diction.orbit/v1/audio/stream'),
+        'codec' => env('TOOLBAR_DICTATION_CODEC', 'auto'),
+    ],
 ];

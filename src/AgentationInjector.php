@@ -61,6 +61,7 @@ class AgentationInjector
         $src = url('/_toolbar-agentation/'.$bundle);
         $settings = json_encode([
             'endpoint' => $this->endpoint(),
+            'dictation' => $this->dictation(),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         return <<<HTML
@@ -78,6 +79,41 @@ class AgentationInjector
         $endpoint = config('toolbar-agentation.endpoint');
 
         return is_string($endpoint) && $endpoint !== '' ? rtrim($endpoint, '/') : null;
+    }
+
+    /**
+     * @return array{provider: string, wsUrl?: string, codec?: string}
+     */
+    protected function dictation(): array
+    {
+        $provider = config('toolbar-agentation.dictation.provider', 'diction');
+        $provider = is_string($provider) ? strtolower(trim($provider)) : 'none';
+
+        if (! in_array($provider, ['diction', 'none'], true)) {
+            $provider = 'none';
+        }
+
+        if ($provider === 'none') {
+            return ['provider' => 'none'];
+        }
+
+        $wsUrl = config('toolbar-agentation.dictation.ws_url', 'wss://diction.orbit/v1/audio/stream');
+        $wsUrl = is_string($wsUrl) && $wsUrl !== ''
+            ? $wsUrl
+            : 'wss://diction.orbit/v1/audio/stream';
+
+        $codec = config('toolbar-agentation.dictation.codec', 'auto');
+        $codec = is_string($codec) ? strtolower(trim($codec)) : 'auto';
+
+        if (! in_array($codec, ['auto', 'opus', 'pcm'], true)) {
+            $codec = 'auto';
+        }
+
+        return [
+            'provider' => 'diction',
+            'wsUrl' => $wsUrl,
+            'codec' => $codec,
+        ];
     }
 
     protected function nonceAttribute(): string

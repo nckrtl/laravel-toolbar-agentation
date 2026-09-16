@@ -103,3 +103,28 @@ it('keeps content-length in sync when the header is present', function (): void 
 it('busts the asset cache when the bundle changes', function (): void {
     expect(Bundle::asset())->toMatch('/^'.preg_quote(Bundle::FILENAME, '/').'\?v=[0-9a-f]{12}$/');
 });
+
+it('exposes diction settings to the runtime', function (): void {
+    config()->set('toolbar-agentation.dictation.provider', 'diction');
+    config()->set('toolbar-agentation.dictation.ws_url', 'wss://diction.orbit/v1/audio/stream');
+    config()->set('toolbar-agentation.dictation.codec', 'auto');
+
+    expect(injectInto('<html><body></body></html>'))
+        ->toContain('"dictation":{"provider":"diction","wsUrl":"wss://diction.orbit/v1/audio/stream","codec":"auto"}');
+});
+
+it('hides dictation when the provider is none', function (): void {
+    config()->set('toolbar-agentation.dictation.provider', 'none');
+
+    $html = injectInto('<html><body></body></html>');
+
+    expect($html)
+        ->toContain('"provider":"none"')
+        ->not->toContain('"wsUrl"');
+});
+
+it('treats an unknown dictation provider as disabled', function (): void {
+    config()->set('toolbar-agentation.dictation.provider', 'whisper');
+
+    expect(injectInto('<html><body></body></html>'))->toContain('"provider":"none"');
+});

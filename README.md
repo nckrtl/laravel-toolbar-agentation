@@ -62,6 +62,11 @@ php artisan vendor:publish --tag=laravel-toolbar-agentation-config
 return [
     'enabled' => env('LARAVEL_TOOLBAR_AGENTATION_ENABLED', true),
     'endpoint' => env('AGENTATION_URL'),
+    'dictation' => [
+        'provider' => env('TOOLBAR_DICTATION_PROVIDER', 'diction'), // diction|none
+        'ws_url' => env('TOOLBAR_DICTATION_WS_URL', 'wss://diction.orbit/v1/audio/stream'),
+        'codec' => env('TOOLBAR_DICTATION_CODEC', 'auto'), // auto|opus|pcm
+    ],
 ];
 ```
 
@@ -69,13 +74,38 @@ Leave `AGENTATION_URL` unset (or set `endpoint` to `null`) to keep annotations
 in `localStorage` only, without an MCP sync server. When Orbit runs a per-app
 agentation-mcp Process it projects `AGENTATION_URL` into the app environment.
 
+### Dictation
+
+The Agentation comment popup includes a microphone control when
+`TOOLBAR_DICTATION_PROVIDER=diction`. Click to start, click again to stop; the
+transcript is written into the existing comment field so you can edit and
+submit as usual. Set `TOOLBAR_DICTATION_PROVIDER=none` to hide the mic.
+
+Audio goes **directly** to Diction over WebSocket (`wss://diction.orbit/v1/audio/stream`
+by default). Laravel does not proxy the stream. Diction must be reachable from
+the browser (Orbit's `diction.orbit` host, or your own gateway URL via
+`TOOLBAR_DICTATION_WS_URL`).
+
+The runtime prefers MediaRecorder Opus (`audio/webm;codecs=opus` or
+`audio/ogg;codecs=opus`) and connects with `?codec=opus`, offering Diction's
+`diction.opus.v1` subprotocol. If the browser cannot produce Opus, or Diction
+declines the subprotocol, it streams PCM16 little-endian mono at 16 kHz — the
+format `/v1/audio/stream` documents as the default. Force either path with
+`TOOLBAR_DICTATION_CODEC=opus` or `pcm`.
+
+On stop the client sends `{"action":"done"}` and fills the comment with the
+`{"text":"..."}` reply. Mic-denied and WebSocket failures surface next to the
+field and do not block typing or submit.
+
 ### Content Security Policy
 
 If your app sends a CSP, allow the sync server as a connect source (use the
-same host as `AGENTATION_URL`):
+same host as `AGENTATION_URL`). When dictation is enabled, also allow the
+Diction WebSocket:
 
 ```php
 $policy->add(Directive::CONNECT, env('AGENTATION_URL'));
+$policy->add(Directive::CONNECT, env('TOOLBAR_DICTATION_WS_URL', 'wss://diction.orbit'));
 ```
 
 ## Development
