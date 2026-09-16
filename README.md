@@ -66,6 +66,7 @@ return [
         'provider' => env('TOOLBAR_DICTATION_PROVIDER', 'diction'), // diction|none
         'ws_url' => env('TOOLBAR_DICTATION_WS_URL', 'wss://diction.orbit/v1/audio/stream'),
         'codec' => env('TOOLBAR_DICTATION_CODEC', 'auto'), // auto|opus|pcm
+        'auto_start' => env('TOOLBAR_DICTATION_AUTO_START', true),
     ],
 ];
 ```
@@ -77,9 +78,12 @@ agentation-mcp Process it projects `AGENTATION_URL` into the app environment.
 ### Dictation
 
 The Agentation comment popup includes a microphone control when
-`TOOLBAR_DICTATION_PROVIDER=diction`. Click to start, click again to stop; the
-transcript is written into the existing comment field so you can edit and
-submit as usual. Set `TOOLBAR_DICTATION_PROVIDER=none` to hide the mic.
+`TOOLBAR_DICTATION_PROVIDER=diction`. After you pick an element, recording
+starts automatically when the comment popup appears (same path as clicking the
+mic). Click the mic again to stop; the transcript is written into the existing
+comment field so you can edit and submit as usual. Set
+`TOOLBAR_DICTATION_AUTO_START=false` to require an explicit mic click, or
+`TOOLBAR_DICTATION_PROVIDER=none` to hide the mic.
 
 Audio goes **directly** to Diction over WebSocket (`wss://diction.orbit/v1/audio/stream`
 by default). Laravel does not proxy the stream. Diction must be reachable from

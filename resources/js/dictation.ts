@@ -22,6 +22,8 @@ export type DictationSettings = {
     provider?: string;
     wsUrl?: string;
     codec?: DictationCodec | string;
+    /** Start recording when a new comment popup textarea first appears. */
+    autoStart?: boolean;
 };
 
 export type DictateOptions = {

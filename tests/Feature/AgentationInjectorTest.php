@@ -108,9 +108,17 @@ it('exposes diction settings to the runtime', function (): void {
     config()->set('toolbar-agentation.dictation.provider', 'diction');
     config()->set('toolbar-agentation.dictation.ws_url', 'wss://diction.orbit/v1/audio/stream');
     config()->set('toolbar-agentation.dictation.codec', 'auto');
+    config()->set('toolbar-agentation.dictation.auto_start', true);
 
     expect(injectInto('<html><body></body></html>'))
-        ->toContain('"dictation":{"provider":"diction","wsUrl":"wss://diction.orbit/v1/audio/stream","codec":"auto"}');
+        ->toContain('"dictation":{"provider":"diction","wsUrl":"wss://diction.orbit/v1/audio/stream","codec":"auto","autoStart":true}');
+});
+
+it('can disable dictation auto-start', function (): void {
+    config()->set('toolbar-agentation.dictation.provider', 'diction');
+    config()->set('toolbar-agentation.dictation.auto_start', false);
+
+    expect(injectInto('<html><body></body></html>'))->toContain('"autoStart":false');
 });
 
 it('hides dictation when the provider is none', function (): void {

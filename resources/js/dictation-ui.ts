@@ -16,6 +16,8 @@ type Session = {
 
 const sessions = new WeakMap<HTMLTextAreaElement, Session>();
 const liveTextareas = new Set<HTMLTextAreaElement>();
+/** Textareas that already received an auto-start attempt (one shot per instance). */
+const autoStarted = new WeakSet<HTMLTextAreaElement>();
 
 /**
  * Watches Agentation's comment popup (the CSS-module textarea + actions row)
@@ -202,6 +204,28 @@ function attachToTextarea(textarea: HTMLTextAreaElement, settings: DictationSett
     if (button.getAttribute(BUTTON_ATTR) !== desired) {
         setButtonState(button, desired);
     }
+
+    // One-shot per textarea instance: new popup after element pick starts
+    // recording; MutationObserver re-attaches / React re-renders of the same
+    // textarea must not restart. Mic click still stops → fill as before.
+    maybeAutoStart(textarea, button, settings);
+}
+
+function maybeAutoStart(
+    textarea: HTMLTextAreaElement,
+    button: HTMLButtonElement,
+    settings: DictationSettings,
+): void {
+    if (settings.autoStart === false) {
+        return;
+    }
+
+    if (autoStarted.has(textarea) || sessions.has(textarea)) {
+        return;
+    }
+
+    autoStarted.add(textarea);
+    void startDictation(textarea, button, settings);
 }
 
 function toggleDictation(

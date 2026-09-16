@@ -34,5 +34,12 @@ return [
         'provider' => env('TOOLBAR_DICTATION_PROVIDER', 'diction'),
         'ws_url' => env('TOOLBAR_DICTATION_WS_URL', 'wss://diction.orbit/v1/audio/stream'),
         'codec' => env('TOOLBAR_DICTATION_CODEC', 'auto'),
+        /*
+         * When true, picking an element automatically starts dictation as soon
+         * as the Agentation comment popup textarea mounts. The mic still stops
+         * and fills the field. Set TOOLBAR_DICTATION_AUTO_START=false to require
+         * an explicit mic click.
+         */
+        'auto_start' => env('TOOLBAR_DICTATION_AUTO_START', true),
     ],
 ];

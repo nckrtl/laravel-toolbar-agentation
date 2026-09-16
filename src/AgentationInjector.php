@@ -82,7 +82,7 @@ class AgentationInjector
     }
 
     /**
-     * @return array{provider: string, wsUrl?: string, codec?: string}
+     * @return array{provider: string, wsUrl?: string, codec?: string, autoStart?: bool}
      */
     protected function dictation(): array
     {
@@ -109,10 +109,16 @@ class AgentationInjector
             $codec = 'auto';
         }
 
+        $autoStart = filter_var(
+            config('toolbar-agentation.dictation.auto_start', true),
+            FILTER_VALIDATE_BOOLEAN,
+        );
+
         return [
             'provider' => 'diction',
             'wsUrl' => $wsUrl,
             'codec' => $codec,
+            'autoStart' => $autoStart,
         ];
     }
 
